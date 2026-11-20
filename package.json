@@ -1,0 +1,13 @@
+{
+  "name": "shopify-checkout-review-radar",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "scrape": "node scripts/scrape.mjs",
+    "build": "node scripts/build-dashboard.mjs",
+    "check": "node --check scripts/scrape.mjs && node --check scripts/build-dashboard.mjs"
+  },
+  "dependencies": {
+    "playwright": "^1.57.0"
+  }
+}

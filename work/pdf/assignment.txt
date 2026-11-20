@@ -1,0 +1,52 @@
+GoKwik · AI GTM technical assignment
+Time: 48 hours from when you receive this. Cost: zero — use only free tools and free tiers. Do
+not buy any subscription.
+
+This role owns small internal products that run by themselves: scheduled jobs, live pages, alerts
+and numbers people act on. This assignment tests exactly that. Marketing knowledge is not
+being tested.
+
+
+Rules
+      Use any AI assistant's free tier (ChatGPT, Claude, Gemini, Copilot). Using AI is expected;
+      you must be able to explain and change every line it wrote.
+      Build it fresh for this assignment. Put everything in one public GitHub repository. Free
+      options that work: GitHub Actions for scheduling, GitHub Pages / Vercel / Netlify for
+      hosting.
+      No paid APIs, no paid scrapers, no no-code platforms that need a subscription.
+
+
+Part 1 — A reviews tracker that runs by itself
+Build a tracker that collects public merchant reviews of three checkout apps on the Shopify App
+Store every day, and shows what merchants are saying about each.
+
+      Apps: Kwik COD & Checkout (GoKwik), Razorpay COD & Magic Checkout, Simpl: 1-Click
+      Checkout.
+      Runs daily on its own on a free scheduler. It must keep running after you close your
+      laptop.
+      Keeps history: a review seen on several days is stored and counted once.
+      Tags every review with a sentiment (positive / neutral / negative) and one main theme (for
+      example pricing, support, setup, conversion, COD / RTO). Use a free AI tier or your own
+      rules.
+      Checks the tagging: tag 30 reviews yourself by hand, then report how often your tracker
+      agrees with you, and show two cases where it got it wrong.
+      A public page showing reviews per week for each app, sentiment over time for each app
+      (positive / neutral / negative by week), the theme mix for each app, and the 20 latest
+      reviews with links.
+      An alert that reaches you (email, a free Slack or Discord webhook, or a GitHub issue)
+      when a run fails or quietly collects nothing. It must stay silent when everything is fine.
+      Show us proof it fired once.
+
+
+Part 2 — Handover note (README)
+      How to run it and what runs when.
+      Where the data and any keys live, and who can see them.
+      What will break first, and how you would find out.
+      How you would move this from GitHub Actions to a server you manage (for example AWS
+      EC2), step by step. Describe it; do not set it up.
+      What you would build next with two more days.
+
+
+Submit
+Reply with: the repository link, the live page link, and a link to the alert that fired.
+
