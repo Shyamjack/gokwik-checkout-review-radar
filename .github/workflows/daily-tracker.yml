@@ -24,12 +24,15 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - name: Collect, deduplicate, tag, and rebuild
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: npm run scrape && npm run build
       - name: Commit refreshed data and dashboard
         run: |
           git config user.name "review-radar-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add data public
+          git add public
           git diff --cached --quiet || git commit -m "data: daily review refresh"
           git push
       - name: Alert only for a failed or empty run

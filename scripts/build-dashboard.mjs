@@ -1,7 +1,12 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { db } from './db.mjs';
 const file = (path) => new URL(`../${path}`, import.meta.url);
-const reviews = JSON.parse(await readFile(file('data/reviews.json'), 'utf8'));
-const validation = JSON.parse(await readFile(file('data/validation.json'), 'utf8'));
+const { data: reviewRows, error: reviewsError } = await db.from('tracker_reviews').select('*').order('review_date', { ascending: false });
+const { data: validationRows, error: validationError } = await db.from('tracker_validation').select('*');
+if (reviewsError) throw reviewsError;
+if (validationError) throw validationError;
+const reviews = reviewRows.map(r => ({ id: r.id, appId: r.app_id, app: r.app, merchant: r.merchant, date: r.review_date, rating: r.rating, text: r.review_text, sourceUrl: r.source_url, firstSeenAt: r.first_seen_at, lastSeenAt: r.last_seen_at, week: r.week_start, sentiment: r.sentiment, theme: r.theme, tagger: r.tagger }));
+const validation = validationRows.map(r => ({ reviewId: r.review_id, manualSentiment: r.manual_sentiment, manualTheme: r.manual_theme, sentiment: r.predicted_sentiment, theme: r.predicted_theme, note: r.note }));
 const apps = JSON.parse(await readFile(file('config/apps.json'), 'utf8'));
 await mkdir(file('public'), { recursive: true });
 const data = JSON.stringify({ reviews, validation, apps }).replaceAll('</', '<\\/');

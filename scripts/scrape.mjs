@@ -1,6 +1,7 @@
 import { chromium } from 'playwright';
 import { createHash } from 'node:crypto';
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
+import { db } from './db.mjs';
 
 const root = new URL('..', import.meta.url);
 const file = (path) => new URL(`../${path}`, import.meta.url);
@@ -50,7 +51,8 @@ async function getReviews(page, app, pageNumber = 1) {
   return found;
 }
 
-const existing = JSON.parse(await readFile(file('data/reviews.json'), 'utf8'));
+const { data: existing, error: existingError } = await db.from('tracker_reviews').select('*');
+if (existingError) throw existingError;
 const seen = new Map(existing.map(r => [r.id, r]));
 const browser = await chromium.launch({ headless: true });
 let collected = 0;
@@ -65,15 +67,23 @@ try {
     }
     await page.close();
     collected += reviews.length;
-    for (const review of reviews) seen.set(review.id, { ...(seen.get(review.id) || review), lastSeenAt: now });
+    for (const review of reviews) {
+      const prior = seen.get(review.id);
+      seen.set(review.id, prior ? { ...prior, last_seen_at: now } : review);
+    }
   }
 } finally { await browser.close(); }
 
 if (collected === 0) throw new Error('EMPTY_COLLECTION: zero review cards extracted; failing so the workflow opens an alert issue.');
-const output = [...seen.values()].sort((a, b) => b.date.localeCompare(a.date));
-await mkdir(file('data'), { recursive: true });
-await writeFile(file('data/reviews.json'), JSON.stringify(output, null, 2) + '\n');
-const history = JSON.parse(await readFile(file('data/run-history.json'), 'utf8'));
-history.push({ ranAt: now, collected, stored: output.length, status: 'ok' });
-await writeFile(file('data/run-history.json'), JSON.stringify(history.slice(-90), null, 2) + '\n');
-console.log(JSON.stringify({ collected, stored: output.length }));
+const output = [...seen.values()].map(r => ({
+  id: r.id, app_id: r.appId ?? r.app_id, app: r.app, merchant: r.merchant,
+  review_date: r.date ?? r.review_date, rating: r.rating, review_text: r.text ?? r.review_text,
+  source_url: r.sourceUrl ?? r.source_url, first_seen_at: r.firstSeenAt ?? r.first_seen_at,
+  last_seen_at: r.lastSeenAt ?? r.last_seen_at, week_start: r.week ?? r.week_start,
+  sentiment: r.sentiment, theme: r.theme, tagger: r.tagger
+}));
+const { error: upsertError } = await db.from('tracker_reviews').upsert(output, { onConflict: 'id' });
+if (upsertError) throw upsertError;
+const { error: runError } = await db.from('tracker_runs').insert({ ran_at: now, collected, stored: output.length, status: 'ok' });
+if (runError) throw runError;
+console.log(JSON.stringify({ collected, stored: output.length, persistence: 'supabase' }));

@@ -8,6 +8,7 @@
     "check": "node --check scripts/scrape.mjs && node --check scripts/build-dashboard.mjs"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.93.1",
     "playwright": "^1.57.0"
   }
 }
