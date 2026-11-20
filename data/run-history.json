@@ -16,5 +16,11 @@
     "collected": 44,
     "stored": 45,
     "status": "ok"
+  },
+  {
+    "ranAt": "2026-11-20T08:30:56.772Z",
+    "collected": 44,
+    "stored": 89,
+    "status": "ok"
   }
 ]
