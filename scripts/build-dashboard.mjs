@@ -1,14 +1,41 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { db } from './db.mjs';
+
 const file = (path) => new URL(`../${path}`, import.meta.url);
+const apps = JSON.parse(await readFile(file('config/apps.json'), 'utf8'));
 const { data: reviewRows, error: reviewsError } = await db.from('tracker_reviews').select('*').order('review_date', { ascending: false });
 const { data: validationRows, error: validationError } = await db.from('tracker_validation').select('*');
 if (reviewsError) throw reviewsError;
 if (validationError) throw validationError;
-const reviews = reviewRows.map(r => ({ id: r.id, appId: r.app_id, app: r.app, merchant: r.merchant, date: r.review_date, rating: r.rating, text: r.review_text, sourceUrl: r.source_url, firstSeenAt: r.first_seen_at, lastSeenAt: r.last_seen_at, week: r.week_start, sentiment: r.sentiment, theme: r.theme, tagger: r.tagger }));
-const validation = validationRows.map(r => ({ reviewId: r.review_id, manualSentiment: r.manual_sentiment, manualTheme: r.manual_theme, sentiment: r.predicted_sentiment, theme: r.predicted_theme, note: r.note }));
-const apps = JSON.parse(await readFile(file('config/apps.json'), 'utf8'));
+
+const reviews = reviewRows.map((r) => ({
+  id: r.id, appId: r.app_id, app: r.app, merchant: r.merchant,
+  date: r.review_date, rating: r.rating, text: r.review_text,
+  sourceUrl: r.source_url, firstSeenAt: r.first_seen_at, lastSeenAt: r.last_seen_at,
+  week: r.week_start, sentiment: r.sentiment, theme: r.theme, tagger: r.tagger
+}));
+const validation = validationRows.map((r) => ({
+  reviewId: r.review_id, manualSentiment: r.manual_sentiment, manualTheme: r.manual_theme,
+  sentiment: r.predicted_sentiment, theme: r.predicted_theme, note: r.note
+}));
+const payload = JSON.stringify({ reviews, validation, apps }).replaceAll('</', '<\\/');
+const html = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Review Radar — Checkout competitor intelligence</title>
+  <meta name="description" content="A public review intelligence dashboard for checkout app competitor signals.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Fraunces:opsz,wght@9..144,600;9..144,700;9..144,800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
+`;
 await mkdir(file('public'), { recursive: true });
-const data = JSON.stringify({ reviews, validation, apps }).replaceAll('</', '<\\/');
-const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Checkout review radar</title><link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Fraunces:opsz,wght@9..144,600;9..144,800&display=swap" rel="stylesheet"><link rel="stylesheet" href="style.css"></head><body><main><header><p class="eyebrow">DAILY MERCHANT SIGNALS · SHOPIFY APP STORE</p><h1>Checkout<br><em>review radar.</em></h1><p class="lede">A self-running tracker for merchant voice across three checkout apps. Refreshes daily, flags failure loudly, stays out of the way when healthy.</p><div id="meta"></div></header><section id="cards" class="cards"></section><section class="grid"><article><p class="label">REVIEWS PER WEEK</p><div id="weekly" class="bars"></div></article><article><p class="label">SENTIMENT OVER TIME</p><div id="sentiment" class="bars"></div></article></section><section class="grid"><article><p class="label">THEME MIX</p><div id="themes" class="theme-grid"></div></article><article><p class="label">TAGGING CHECK</p><div id="validation"></div></article></section><section class="latest"><div><p class="label">LATEST 20 REVIEWS</p><h2>The merchant voice,<br>unfiltered.</h2></div><div id="reviews"></div></section></main><footer>Built for GoKwik AI GTM technical assignment · Data source: Shopify App Store · Last build: ${new Date().toISOString()}</footer><script>const D=${data}; const qs=s=>document.querySelector(s); const esc=s=>String(s||'').replace(/[&<>\"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); const count=(a,k)=>a.reduce((o,x)=>(o[x[k]]=(o[x[k]]||0)+1,o),{}); const r=D.reviews; qs('#meta').innerHTML='<span>'+r.length+' unique reviews retained</span><span>Three apps monitored</span><span>Rule-based tags · auditable</span>'; qs('#cards').innerHTML=D.apps.map(a=>{let x=r.filter(v=>v.appId===a.id),n=x.filter(v=>v.sentiment==='negative').length;return '<article class="app-card" style="--accent:'+a.accent+'"><p>'+a.name+'</p><strong>'+x.length+'</strong><small>unique reviews</small><b>'+n+' negative</b></article>'}).join(''); function stacked(id,key){const groups=count(r,key),mx=Math.max(1,...Object.values(groups));qs(id).innerHTML=Object.entries(groups).sort().slice(-8).map(([k,v])=>'<div class="bar-row"><span>'+k+'</span><i><b style="width:'+(v/mx*100)+'%"></b></i><em>'+v+'</em></div>').join('')||'<p class="empty">Data appears after the first successful collection.</p>'} stacked('#weekly','week'); const sent=count(r,'sentiment');qs('#sentiment').innerHTML=['positive','neutral','negative'].map(s=>'<div class="bar-row '+s+'"><span>'+s+'</span><i><b style="width:'+((sent[s]||0)/Math.max(1,r.length)*100)+'%"></b></i><em>'+(sent[s]||0)+'</em></div>').join(''); const themes=count(r,'theme');qs('#themes').innerHTML=Object.entries(themes).sort((a,b)=>b[1]-a[1]).map(([t,n])=>'<div><strong>'+n+'</strong><span>'+esc(t)+'</span></div>').join('')||'<p class="empty">Theme counts will appear here.</p>'; let checked=D.validation,agree=checked.filter(x=>x.manualSentiment===x.sentiment&&x.manualTheme===x.theme).length,miss=checked.filter(x=>x.note);qs('#validation').innerHTML=checked.length?'<strong>'+agree+'/'+checked.length+'</strong><p>exact sentiment + theme agreement</p><small>'+miss.map(x=>esc(x.note)).join('<br>')+'</small>':'<strong>Pending</strong><p>30-review manual audit is documented in the repository before submission.</p>';qs('#reviews').innerHTML=r.slice(0,20).map(x=>'<a class="review" href="'+esc(x.sourceUrl)+'" target="_blank" rel="noreferrer"><div><span class="pill '+x.sentiment+'">'+x.sentiment+'</span><span class="pill">'+esc(x.theme)+'</span></div><p>“'+esc(x.text)+'”</p><small>'+esc(x.app)+' · '+esc(x.merchant)+' · '+x.date.slice(0,10)+' · '+x.rating+'/5 ↗</small></a>').join('')||'<p class="empty">No reviews are published yet. The first scheduled run will populate this page.</p>';</script></body></html>`;
+await writeFile(file('public/data.js'), `window.TRACKER_DATA = ${payload};\n`);
 await writeFile(file('public/index.html'), html);
