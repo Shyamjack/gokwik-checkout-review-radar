@@ -32,7 +32,9 @@ async function getReviews(page, app, pageNumber = 1) {
   const rows = await page.locator('div.tw-relative.tw-pb-md').evaluateAll(nodes => nodes.map(node => ({
     text: node.innerText,
     rating: Number(node.querySelector('[aria-label$="stars"]')?.getAttribute('aria-label')?.match(/[1-5]/)?.[0])
-  })).filter(x => x.rating && x.text.length > 35));
+  // Rating-only cards can be very short (date + shop + country). They are still
+  // public reviews and must be kept in the total and star distribution.
+  })).filter(x => x.rating && x.text.length > 15));
   const found = [];
   for (const row of rows) {
     const lines = row.text.split('\n').map(x => x.trim()).filter(Boolean);
