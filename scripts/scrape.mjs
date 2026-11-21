@@ -42,13 +42,21 @@ async function getReviews(page, app, pageNumber = 1) {
     const date = new Date(dateText).toISOString();
     const afterDate = lines.slice(Math.max(0, lines.indexOf(dateText) + 1));
     const merchantOffset = afterDate.findIndex(x => /^(?:India|United States|Canada|United Kingdom)$/i.test(x));
-    const text = clean((merchantOffset > 0 ? afterDate.slice(0, merchantOffset - 1) : afterDate).filter(x => !/^(show more|read more)$/i.test(x)).join(' '));
-    if (text.length < 12) continue;
     const merchant = merchantOffset > 0 ? afterDate[merchantOffset - 1] : 'Unknown merchant';
+    // A Shopify rating can be valid even when the merchant left no written text.
+    // Retain it for accurate totals and label it explicitly in the dashboard.
+    const writtenText = clean((merchantOffset > 0 ? afterDate.slice(0, merchantOffset - 1) : afterDate).filter(x => !/^(show more|read more)$/i.test(x)).join(' '));
+    const text = writtenText || '(No written review)';
     const id = createHash('sha256').update(`${app.id}|${date.slice(0,10)}|${merchant}|${text}`).digest('hex').slice(0, 16);
     found.push({ id, appId: app.id, app: app.name, merchant, date, rating, text, sourceUrl: url, firstSeenAt: now, lastSeenAt: now, week: week(date), ...classify(text, rating) });
   }
   return found;
+}
+
+async function getTotalReviewCount(page) {
+  const text = await page.locator('body').innerText();
+  const match = text.match(/Reviews\s*\((\d[\d,]*)\)/i);
+  return match ? Number(match[1].replaceAll(',', '')) : 0;
 }
 
 const { data: existing, error: existingError } = await db.from('tracker_reviews').select('*');
@@ -59,11 +67,16 @@ let collected = 0;
 try {
   for (const app of apps) {
     const page = await browser.newPage({ userAgent: 'Mozilla/5.0 (compatible; GoKwik-Assignment-Review-Radar/1.0; +https://github.com)' });
-    const reviews = [];
-    for (let pageNumber = 1; pageNumber <= 4; pageNumber++) {
+    const firstPage = await getReviews(page, app, 1);
+    const reportedCount = await getTotalReviewCount(page);
+    // Shopify currently exposes ten reviews per page. Use the displayed total so we collect
+    // the complete public history, not an arbitrary sample. The cap prevents a malformed page
+    // from creating an unbounded job.
+    const pagesToVisit = Math.min(100, Math.max(1, Math.ceil(reportedCount / 10)));
+    const reviews = [...firstPage];
+    for (let pageNumber = 2; pageNumber <= pagesToVisit; pageNumber++) {
       const batch = await getReviews(page, app, pageNumber);
       reviews.push(...batch);
-      if (batch.length < 10) break;
     }
     await page.close();
     collected += reviews.length;
