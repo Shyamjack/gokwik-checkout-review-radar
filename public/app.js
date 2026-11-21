@@ -13,8 +13,10 @@
   const negativeThemes = (rows) => Object.entries(count(rows.filter((r) => r.sentiment === 'negative'), 'theme')).sort((a, b) => b[1] - a[1]);
   const action = { support: 'Test proof points around responsive support, implementation help, or named ownership.', setup: 'Test an onboarding-led story: guided migration, integration clarity, and fast time to value.', conversion: 'Investigate checkout friction, then test a message around a more confident purchase journey.', pricing: 'Test transparent value education. Do not make price comparisons without current evidence.', 'COD / RTO': 'Test practical education around order-quality, fraud prevention, and RTO workflows.', 'product / other': 'Investigate the exact product issue before turning it into a campaign message.' };
 
-  function reviewList(rows, limit = Infinity) {
-    return latest(rows).slice(0, limit).map((r) => `<a class="feed-item" href="${esc(r.sourceUrl)}" target="_blank" rel="noreferrer"><div class="feed-meta"><time>${day(r.date)}</time><span class="tag ${r.sentiment}">${esc(r.sentiment)}</span><span class="tag">${esc(r.theme)}</span></div><p>“${esc(r.text)}”</p><small>${esc(r.merchant)} · ${r.rating}/5 <b>Open Shopify review ↗</b></small></a>`).join('') || '<p class="empty">No captured reviews for this company yet.</p>';
+  function reviewList(rows, page = 1) {
+    const pageSize = 20, ordered = latest(rows), pages = Math.max(1, Math.ceil(ordered.length / pageSize)), current = Math.min(Math.max(1, page), pages), slice = ordered.slice((current - 1) * pageSize, current * pageSize);
+    const cards = slice.map((r) => `<a class="feed-item" href="${esc(r.sourceUrl)}" target="_blank" rel="noreferrer"><div class="feed-meta"><time>${day(r.date)}</time><span class="tag ${r.sentiment}">${esc(r.sentiment)}</span><span class="tag">${esc(r.theme)}</span></div><p>“${esc(r.text)}”</p><small>${esc(r.merchant)} · ${r.rating}/5 <b>Open Shopify review ↗</b></small></a>`).join('') || '<p class="empty">No captured reviews for this company yet.</p>';
+    return `${cards}${pages > 1 ? `<nav class="review-pager" aria-label="Review pages"><button data-review-page="${current - 1}" ${current === 1 ? 'disabled' : ''}>← Previous</button><span>Page ${current} of ${pages} · ${rows.length} reviews</span><button data-review-page="${current + 1}" ${current === pages ? 'disabled' : ''}>Next →</button></nav>` : ''}`;
   }
   function themeBars(rows) {
     const themes = Object.entries(count(rows, 'theme')).sort((a, b) => b[1] - a[1]), max = Math.max(1, ...themes.map((x) => x[1]));
@@ -29,12 +31,6 @@
     const stars = count(rows, 'rating'), max = Math.max(1, ...[1, 2, 3, 4, 5].map((rating) => stars[rating] || 0));
     return `<div class="star-list">${[5, 4, 3, 2, 1].map((rating) => { const n = stars[rating] || 0; return `<div class="star-row"><span>${'★'.repeat(rating)}${'☆'.repeat(5 - rating)}</span><i><b style="width:${n / max * 100}%"></b></i><em>${n}</em></div>`; }).join('')}</div>`;
   }
-  function quickRead(rows) {
-    const positives = Object.entries(count(rows.filter((r) => r.sentiment === 'positive'), 'theme')).sort((a, b) => b[1] - a[1]);
-    const negatives = negativeThemes(rows), [goodTheme, goodN] = positives[0] || ['No positive theme', 0], [badTheme, badN] = negatives[0] || ['No negative theme', 0];
-    const high = rows.filter((r) => r.rating >= 4).length, low = rows.filter((r) => r.rating <= 2).length;
-    return `<section class="quick-read"><p class="kicker">MESSAGE ALIGNMENT READOUT</p><h2>What the reviews say to lead with.</h2><ul><li><b>Strongest proof point:</b> ${esc(goodTheme)} is praised in ${goodN} captured review${goodN === 1 ? '' : 's'}.</li><li><b>Biggest message risk:</b> ${esc(badTheme)} is criticised in ${badN} review${badN === 1 ? '' : 's'}; do not make an unsupported claim here.</li><li><b>Star reality:</b> ${pct(high, rows.length)}% are 4–5 star and ${pct(low, rows.length)}% are 1–2 star.</li><li><b>Campaign use:</b> turn recurring positive phrases into landing-page and ad hypotheses, then open the linked reviews before publishing a customer claim.</li></ul></section>`;
-  }
   function scanHistory(company) {
     const runs = DATA.runs || [], run = runs[0], perApp = (DATA.runApps || []).find((row) => row.runId === run?.id && row.appId === company.id);
     if (!run) return '<section class="scan-history panel"><p class="kicker">SCAN HISTORY</p><h2>No scan recorded yet</h2></section>';
@@ -44,15 +40,15 @@
     return `<section class="scan-history panel"><div><p class="kicker">SCAN HISTORY</p><h2>Latest collection check</h2><p class="scan-note">The scraper revisits the same public pages. A review is identified by its Shopify date, merchant and text, so repeated cards are updated—not counted twice.</p></div><div class="scan-stats"><article><span>LAST SCAN</span><strong>${esc(stamp)}</strong><small>${esc(run.status)}</small></article><article><span>RUN TIME</span><strong>${esc(duration)}</strong><small>${run.collected} review cards checked</small></article><article class="scan-change"><span>WHAT CHANGED</span><strong>${esc(change)}</strong><small>${esc(perApp?.detail || run.detail || 'Historical scan')}</small></article></div></section>`;
   }
   function heatmap(rows) {
-    const keys = [...new Set(rows.map((r) => day(r.date).slice(0, 7)))].sort().slice(-12), themes = Object.entries(count(rows, 'theme')).sort((a,b) => b[1] - a[1]).map(([theme]) => theme);
+    const keys = [...new Set(rows.map((r) => day(r.date).slice(0, 7)))].sort().slice(-6), themes = Object.entries(count(rows, 'theme')).sort((a,b) => b[1] - a[1]).map(([theme]) => theme);
     if (!keys.length) return '<section class="review-heatmap panel"><p class="kicker">REVIEW WEATHER</p><h2>No dated reviews yet</h2></section>';
     const label = (key) => new Intl.DateTimeFormat('en', { month: 'short', year: '2-digit', timeZone: 'UTC' }).format(new Date(`${key}-01T00:00:00Z`));
-    return `<section class="review-heatmap panel"><div><p class="kicker">REVIEW WEATHER</p><h2>Monthly review condition</h2><p>Each square is a theme in a review month. Green means more positive ratings; coral means more negative ratings. Darker squares mean more review volume.</p></div><div class="heat-key"><span class="good"></span> more good <span class="poor"></span> more bad <span class="quiet"></span> no reviews</div><div class="heat-grid" style="grid-template-columns:120px repeat(${keys.length}, minmax(31px, 1fr))"><div></div>${keys.map((key) => `<div class="heat-month">${label(key)}</div>`).join('')}${themes.map((theme) => `<div class="heat-theme">${esc(theme)}</div>${keys.map((key) => { const cell = rows.filter((r) => r.theme === theme && day(r.date).slice(0, 7) === key), good = cell.filter((r) => r.sentiment === 'positive').length, poor = cell.filter((r) => r.sentiment === 'negative').length, total = cell.length; const mood = !total ? 'quiet' : good > poor ? 'good' : poor > good ? 'poor' : 'mixed'; const intensity = total ? Math.min(.95, .22 + total / Math.max(1, rows.length / 18)) : 0; return `<div class="heat-cell ${mood}" style="--heat:${intensity}" title="${esc(`${label(key)} · ${theme}: ${total} review${total === 1 ? '' : 's'}, ${good} good, ${poor} bad`)}">${total || ''}</div>`; }).join('')}`).join('')}</div></section>`;
+    return `<section class="review-heatmap panel"><div><p class="kicker">REVIEW WEATHER</p><h2>Monthly review condition</h2><p>Last six months with review activity. Each tile shows <b>good / bad</b> feedback for that theme.</p></div><div class="heat-key"><span class="good"></span> mostly good <span class="poor"></span> mostly bad <span class="quiet"></span> no reviews</div><div class="heat-grid" style="grid-template-columns:145px repeat(${keys.length}, minmax(74px, 1fr))"><div></div>${keys.map((key) => `<div class="heat-month">${label(key)}</div>`).join('')}${themes.map((theme) => `<div class="heat-theme">${esc(theme)}</div>${keys.map((key) => { const cell = rows.filter((r) => r.theme === theme && day(r.date).slice(0, 7) === key), good = cell.filter((r) => r.sentiment === 'positive').length, poor = cell.filter((r) => r.sentiment === 'negative').length, total = cell.length; const mood = !total ? 'quiet' : good > poor ? 'good' : poor > good ? 'poor' : 'mixed'; return `<div class="heat-cell ${mood}" title="${esc(`${label(key)} · ${theme}: ${total} review${total === 1 ? '' : 's'}, ${good} good, ${poor} bad`)}">${total ? `<b>↑${good}</b><small>↓${poor}</small>` : '—'}</div>`; }).join('')}`).join('')}</div></section>`;
   }
   function companyProfile(company) {
     const rows = byApp(company.id), neg = rows.filter((r) => r.sentiment === 'negative').length, pos = rows.filter((r) => r.sentiment === 'positive').length;
     const [theme, n] = top(negativeThemes(rows));
-    return `<section class="company-profile"><header style="--accent:${company.accent}"><p class="kicker">COMPANY REVIEW INTELLIGENCE</p><h1>${esc(company.name)}</h1><p class="profile-summary">A structured view of public merchant feedback: review volume, sentiment, recurring themes, star ratings, and every captured source review.</p></header>${scanHistory(company)}<div class="profile-metrics"><article><span>CAPTURED REVIEWS</span><strong>${rows.length}</strong><small>Unique public reviews</small></article><article><span>NEGATIVE SHARE</span><strong>${pct(neg, rows.length)}%</strong><small>${neg} negative reviews</small></article><article><span>POSITIVE SHARE</span><strong>${pct(pos, rows.length)}%</strong><small>${pos} positive reviews</small></article><article><span>MAIN NEGATIVE THEME</span><strong>${esc(theme)}</strong><small>${n} mentions</small></article></div><div class="profile-grid"><article class="panel"><p class="kicker">THEME BREAKDOWN</p><h2>Praised or poor?</h2><div class="theme-bars">${themeBars(rows)}</div></article><article class="panel star-panel"><p class="kicker">STAR BREAKDOWN</p><h2>How merchants rate it</h2>${starDistribution(rows)}</article></div>${quickRead(rows)}<section class="profile-evidence"><div><p class="kicker">COMPLETE SOURCE EVIDENCE</p><h2>All ${rows.length} captured reviews</h2><p>Every item links back to the public Shopify review page.</p></div><div>${reviewList(rows)}</div></section>${heatmap(rows)}</section>`;
+    return `<section class="company-profile"><header style="--accent:${company.accent}"><p class="kicker">COMPANY REVIEW INTELLIGENCE</p><h1>${esc(company.name)}</h1><p class="profile-summary">A structured view of public merchant feedback: review volume, sentiment, recurring themes, star ratings, and every captured source review.</p></header><div class="profile-metrics"><article><span>CAPTURED REVIEWS</span><strong>${rows.length}</strong><small>Unique public reviews</small></article><article><span>NEGATIVE SHARE</span><strong>${pct(neg, rows.length)}%</strong><small>${neg} negative reviews</small></article><article><span>POSITIVE SHARE</span><strong>${pct(pos, rows.length)}%</strong><small>${pos} positive reviews</small></article><article><span>MAIN NEGATIVE THEME</span><strong>${esc(theme)}</strong><small>${n} mentions</small></article></div><div class="profile-grid"><article class="panel"><p class="kicker">THEME BREAKDOWN</p><h2>Praised or poor?</h2><div class="theme-bars">${themeBars(rows)}</div></article><article class="panel star-panel"><p class="kicker">STAR BREAKDOWN</p><h2>How merchants rate it</h2>${starDistribution(rows)}</article></div><section class="profile-evidence"><div><p class="kicker">COMPLETE SOURCE EVIDENCE</p><h2>All ${rows.length} captured reviews</h2><p>20 reviews per page. Every item links back to the public Shopify review page.</p></div><div id="review-list">${reviewList(rows)}</div></section>${heatmap(rows)}${scanHistory(company)}</section>`;
   }
   function comparison() {
     const cards = DATA.apps.map((company) => {
@@ -66,6 +62,7 @@
   function selectCompany(id) {
     const company = DATA.apps.find((a) => a.id === id) || DATA.apps[0];
     $('#company-panel').innerHTML = companyProfile(company);
+    bindReviewPager(byApp(company.id));
     $('#company-label').textContent = company.name;
     $('#company-menu').setAttribute('aria-expanded', 'false');
     $('#company-list').hidden = true;
@@ -74,6 +71,13 @@
     $('#compare-button').classList.remove('active');
     $('#company-menu').classList.add('active');
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+  function bindReviewPager(rows) {
+    document.querySelectorAll('[data-review-page]').forEach((button) => button.addEventListener('click', () => {
+      $('#review-list').innerHTML = reviewList(rows, Number(button.dataset.reviewPage));
+      bindReviewPager(rows);
+      $('#review-list').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }));
   }
   function showCompare() {
     $('#company-panel').classList.remove('active');
