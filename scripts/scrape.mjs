@@ -7,6 +7,7 @@ const root = new URL('..', import.meta.url);
 const file = (path) => new URL(`../${path}`, import.meta.url);
 const apps = JSON.parse(await readFile(file('config/apps.json'), 'utf8'));
 const now = new Date().toISOString();
+const startedAt = Date.now();
 const week = (date) => { const d = new Date(date); d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7)); return d.toISOString().slice(0, 10); };
 const clean = (value = '') => value.replace(/\s+/g, ' ').trim();
 
@@ -66,6 +67,7 @@ if (existingError) throw existingError;
 const seen = new Map(existing.map(r => [r.id, r]));
 const browser = await chromium.launch({ headless: true });
 let collected = 0;
+const scanApps = [];
 try {
   for (const app of apps) {
     const page = await browser.newPage({ userAgent: 'Mozilla/5.0 (compatible; GoKwik-Assignment-Review-Radar/1.0; +https://github.com)' });
@@ -82,10 +84,12 @@ try {
     }
     await page.close();
     collected += reviews.length;
+    const newReviews = reviews.filter((review) => !seen.has(review.id)).length;
     for (const review of reviews) {
       const prior = seen.get(review.id);
       seen.set(review.id, prior ? { ...prior, last_seen_at: now } : review);
     }
+    scanApps.push({ app_id: app.id, collected: reviews.length, new_reviews: newReviews, total_reviews: [...seen.values()].filter((review) => (review.appId ?? review.app_id) === app.id).length, status: 'ok' });
   }
 } finally { await browser.close(); }
 
@@ -99,6 +103,9 @@ const output = [...seen.values()].map(r => ({
 }));
 const { error: upsertError } = await db.from('tracker_reviews').upsert(output, { onConflict: 'id' });
 if (upsertError) throw upsertError;
-const { error: runError } = await db.from('tracker_runs').insert({ ran_at: now, collected, stored: output.length, status: 'ok' });
+const durationMs = Date.now() - startedAt;
+const { data: run, error: runError } = await db.from('tracker_runs').insert({ ran_at: now, collected, stored: output.length, new_reviews: scanApps.reduce((sum, row) => sum + row.new_reviews, 0), duration_ms: durationMs, status: 'ok', detail: 'Scheduled Shopify review scan' }).select('id').single();
 if (runError) throw runError;
-console.log(JSON.stringify({ collected, stored: output.length, persistence: 'supabase' }));
+const { error: appRunError } = await db.from('tracker_run_apps').upsert(scanApps.map((row) => ({ ...row, run_id: run.id })), { onConflict: 'run_id,app_id' });
+if (appRunError) throw appRunError;
+console.log(JSON.stringify({ collected, stored: output.length, durationMs, persistence: 'supabase' }));

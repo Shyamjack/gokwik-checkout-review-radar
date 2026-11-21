@@ -5,8 +5,12 @@ const file = (path) => new URL(`../${path}`, import.meta.url);
 const apps = JSON.parse(await readFile(file('config/apps.json'), 'utf8'));
 const { data: reviewRows, error: reviewsError } = await db.from('tracker_reviews').select('*').order('review_date', { ascending: false });
 const { data: validationRows, error: validationError } = await db.from('tracker_validation').select('*');
+const { data: runRows, error: runsError } = await db.from('tracker_runs').select('*').order('ran_at', { ascending: false });
+const { data: runAppRows, error: runAppsError } = await db.from('tracker_run_apps').select('*');
 if (reviewsError) throw reviewsError;
 if (validationError) throw validationError;
+if (runsError) throw runsError;
+if (runAppsError) throw runAppsError;
 
 const reviews = reviewRows.map((r) => ({
   id: r.id, appId: r.app_id, app: r.app, merchant: r.merchant,
@@ -18,7 +22,9 @@ const validation = validationRows.map((r) => ({
   reviewId: r.review_id, manualSentiment: r.manual_sentiment, manualTheme: r.manual_theme,
   sentiment: r.predicted_sentiment, theme: r.predicted_theme, note: r.note
 }));
-const payload = JSON.stringify({ reviews, validation, apps }).replaceAll('</', '<\\/');
+const runs = runRows.map((r) => ({ id: r.id, ranAt: r.ran_at, collected: r.collected, stored: r.stored, newReviews: r.new_reviews, durationMs: r.duration_ms, status: r.status, detail: r.detail }));
+const runApps = runAppRows.map((r) => ({ runId: r.run_id, appId: r.app_id, collected: r.collected, newReviews: r.new_reviews, totalReviews: r.total_reviews, status: r.status, detail: r.detail }));
+const payload = JSON.stringify({ reviews, validation, runs, runApps, apps }).replaceAll('</', '<\\/');
 const html = `<!doctype html>
 <html lang="en">
 <head>
