@@ -31,6 +31,25 @@
     const stars = count(rows, 'rating'), max = Math.max(1, ...[1, 2, 3, 4, 5].map((rating) => stars[rating] || 0));
     return `<div class="star-list">${[5, 4, 3, 2, 1].map((rating) => { const n = stars[rating] || 0; return `<div class="star-row"><span>${'★'.repeat(rating)}${'☆'.repeat(5 - rating)}</span><i><b style="width:${n / max * 100}%"></b></i><em>${n}</em></div>`; }).join('')}</div>`;
   }
+  function weekStart(value) {
+    const date = d(value), offset = (date.getUTCDay() + 6) % 7;
+    date.setUTCDate(date.getUTCDate() - offset);
+    return date.toISOString().slice(0, 10);
+  }
+  function shortWeek(value) {
+    return new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', timeZone: 'UTC' }).format(new Date(`${value}T00:00:00Z`));
+  }
+  function weeklySignals(rows) {
+    const buckets = Object.entries(rows.reduce((all, row) => {
+      const week = weekStart(row.date), bucket = all[week] || { total: 0, positive: 0, neutral: 0, negative: 0 };
+      bucket.total += 1; bucket[row.sentiment] = (bucket[row.sentiment] || 0) + 1; all[week] = bucket; return all;
+    }, {})).sort(([a], [b]) => a.localeCompare(b)).slice(-12);
+    if (!buckets.length) return '<section class="weekly-signals panel"><p class="kicker">WEEKLY TRACKER</p><h2>No weekly data yet</h2></section>';
+    const highest = Math.max(...buckets.map(([, bucket]) => bucket.total));
+    const volume = buckets.map(([week, bucket]) => `<div class="week-column" title="Week of ${week}: ${bucket.total} reviews"><strong>${bucket.total}</strong><i><b style="height:${Math.max(6, bucket.total / highest * 100)}%"></b></i><small>${shortWeek(week)}</small></div>`).join('');
+    const sentiment = buckets.map(([week, bucket]) => { const total = bucket.total || 1; return `<div class="week-column" title="Week of ${week}: ${bucket.positive} positive, ${bucket.neutral} neutral, ${bucket.negative} negative"><strong>${bucket.total}</strong><i class="sentiment-stack"><b class="positive" style="height:${bucket.positive / total * 100}%"></b><b class="neutral" style="height:${bucket.neutral / total * 100}%"></b><b class="negative" style="height:${bucket.negative / total * 100}%"></b></i><small>${shortWeek(week)}</small></div>`; }).join('');
+    return `<section class="weekly-signals"><article class="panel weekly-card"><p class="kicker">REVIEWS PER WEEK</p><h2>Review volume</h2><p>Latest 12 active review weeks.</p><div class="week-chart volume-chart">${volume}</div></article><article class="panel weekly-card"><p class="kicker">SENTIMENT OVER TIME</p><h2>Weekly sentiment mix</h2><div class="sentiment-key"><span class="positive"></span> Positive <span class="neutral"></span> Neutral <span class="negative"></span> Negative</div><div class="week-chart sentiment-chart">${sentiment}</div></article></section>`;
+  }
   function scanHistory(company) {
     const runs = DATA.runs || [], run = runs[0], perApp = (DATA.runApps || []).find((row) => row.runId === run?.id && row.appId === company.id);
     if (!run) return '<section class="scan-history panel"><p class="kicker">SCAN HISTORY</p><h2>No scan recorded yet</h2></section>';
@@ -42,7 +61,7 @@
   function companyProfile(company) {
     const rows = byApp(company.id), neg = rows.filter((r) => r.sentiment === 'negative').length, pos = rows.filter((r) => r.sentiment === 'positive').length;
     const [theme, n] = top(negativeThemes(rows));
-    return `<section class="company-profile"><header style="--accent:${company.accent}"><p class="kicker">COMPANY REVIEW INTELLIGENCE</p><h1>${esc(company.name)}</h1><p class="profile-summary">A structured view of public merchant feedback: review volume, sentiment, recurring themes, star ratings, and every captured source review.</p></header><div class="profile-metrics"><article><span>CAPTURED REVIEWS</span><strong>${rows.length}</strong><small>Unique public reviews</small></article><article><span>NEGATIVE SHARE</span><strong>${pct(neg, rows.length)}%</strong><small>${neg} negative reviews</small></article><article><span>POSITIVE SHARE</span><strong>${pct(pos, rows.length)}%</strong><small>${pos} positive reviews</small></article><article><span>MAIN NEGATIVE THEME</span><strong>${esc(theme)}</strong><small>${n} mentions</small></article></div><div class="profile-grid"><article class="panel"><p class="kicker">THEME BREAKDOWN</p><h2>Praised or poor?</h2><div class="theme-bars">${themeBars(rows)}</div></article><article class="panel star-panel"><p class="kicker">STAR BREAKDOWN</p><h2>How merchants rate it</h2>${starDistribution(rows)}</article></div><section class="profile-evidence"><div><p class="kicker">COMPLETE SOURCE EVIDENCE</p><h2>All ${rows.length} captured reviews</h2><p>20 reviews per page. Every item links back to the public Shopify review page.</p></div><div id="review-list">${reviewList(rows)}</div></section>${scanHistory(company)}</section>`;
+    return `<section class="company-profile"><header style="--accent:${company.accent}"><p class="kicker">COMPANY REVIEW INTELLIGENCE</p><h1>${esc(company.name)}</h1><p class="profile-summary">A structured view of public merchant feedback: review volume, sentiment, recurring themes, star ratings, and every captured source review.</p></header><div class="profile-metrics"><article><span>CAPTURED REVIEWS</span><strong>${rows.length}</strong><small>Unique public reviews</small></article><article><span>NEGATIVE SHARE</span><strong>${pct(neg, rows.length)}%</strong><small>${neg} negative reviews</small></article><article><span>POSITIVE SHARE</span><strong>${pct(pos, rows.length)}%</strong><small>${pos} positive reviews</small></article><article><span>MAIN NEGATIVE THEME</span><strong>${esc(theme)}</strong><small>${n} mentions</small></article></div><div class="profile-grid"><article class="panel"><p class="kicker">THEME BREAKDOWN</p><h2>Praised or poor?</h2><div class="theme-bars">${themeBars(rows)}</div></article><article class="panel star-panel"><p class="kicker">STAR BREAKDOWN</p><h2>How merchants rate it</h2>${starDistribution(rows)}</article></div>${weeklySignals(rows)}<section class="profile-evidence"><div><p class="kicker">COMPLETE SOURCE EVIDENCE</p><h2>All ${rows.length} captured reviews</h2><p>20 reviews per page. Every item links back to the public Shopify review page.</p></div><div id="review-list">${reviewList(rows)}</div></section>${scanHistory(company)}</section>`;
   }
   function comparison() {
     const cards = DATA.apps.map((company) => {
