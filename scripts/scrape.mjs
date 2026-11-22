@@ -45,7 +45,7 @@ async function getReviews(page, app, pageNumber = 1) {
     // Shopify shows a calendar date with no timezone. Treat it as that calendar
     // date in UTC so a runner in India and a GitHub runner in UTC create the
     // same stable review ID.
-    const date = new Date(`${dateText}T00:00:00.000Z`).toISOString();
+    const date = new Date(`${dateText} 00:00:00 UTC`).toISOString();
     const afterDate = lines.slice(Math.max(0, lines.indexOf(dateText) + 1));
     const merchantOffset = afterDate.findIndex(x => /^(?:India|United States|Canada|United Kingdom)$/i.test(x));
     const merchant = merchantOffset > 0 ? afterDate[merchantOffset - 1] : 'Unknown merchant';
