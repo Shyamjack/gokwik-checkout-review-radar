@@ -60,3 +60,19 @@ jobs:
               'This issue is created only when collection/build fails, including the explicit empty-result guard.'
             ].join('\n');
             await github.rest.issues.create({owner: context.repo.owner, repo: context.repo.repo, title, body, labels: ['tracker-alert']});
+      - name: Send failure webhook when configured
+        if: failure()
+        continue-on-error: true
+        env:
+          ALERT_WEBHOOK_URL: ${{ secrets.ALERT_WEBHOOK_URL }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -z "$ALERT_WEBHOOK_URL" ]; then
+            echo "No ALERT_WEBHOOK_URL configured; GitHub Issue remains the alert channel."
+            exit 0
+          fi
+          payload=$(jq -nc --arg text "Review Radar alert: the daily Shopify review scan failed or returned zero reviews. Investigate: $RUN_URL" --arg run_url "$RUN_URL" '{text: $text, status: "failed", run_url: $run_url}')
+          curl --fail --silent --show-error --request POST \
+            --header 'Content-Type: application/json' \
+            --data "$payload" \
+            "$ALERT_WEBHOOK_URL"
