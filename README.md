@@ -101,7 +101,7 @@ The workflow alerts when extraction itself fails: for example, when all review p
 
 The workflow also supports an optional webhook. When an `ALERT_WEBHOOK_URL` GitHub secret is configured, the same failure can be sent to Slack, email automation, or an internal incident tool. Healthy runs stay silent.
 
-For partial failures, I would compare Shopify’s displayed review total with the extracted total and compare each company’s count against its previous scan. I would then inspect the GitHub Actions and Playwright logs. The next monitoring improvement would be to retain HTML whenever a count drops unexpectedly.
+For partial failures, the scraper retries a short page up to three times. If it is still incomplete, it saves that page’s HTML as a seven-day GitHub Actions artifact before failing the run. I would compare Shopify’s displayed review total with the extracted total, compare each company’s count against its previous scan, then inspect the GitHub Actions logs and the saved HTML evidence.
 
 ## Moving from GitHub Actions to AWS EC2
 

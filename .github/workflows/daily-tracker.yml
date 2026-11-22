@@ -30,6 +30,14 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: npm run scrape && npm run build
+      - name: Upload failed Shopify page evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: failed-shopify-page-evidence
+          path: artifacts/failed-pages/
+          if-no-files-found: warn
+          retention-days: 7
       - name: Commit refreshed data and dashboard
         run: |
           git config user.name "review-radar-bot"

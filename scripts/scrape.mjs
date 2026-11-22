@@ -1,6 +1,6 @@
 import { chromium } from 'playwright';
 import { createHash } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { db } from './db.mjs';
 
 const root = new URL('..', import.meta.url);
@@ -56,7 +56,57 @@ async function getReviews(page, app, pageNumber = 1) {
     const id = createHash('sha256').update(`${app.id}|${date.slice(0,10)}|${merchant}|${text}`).digest('hex').slice(0, 16);
     found.push({ id, appId: app.id, app: app.name, merchant, date, rating, text, sourceUrl: url, firstSeenAt: now, lastSeenAt: now, week: week(date), ...classify(text, rating) });
   }
-  return found;
+  return { reviews: found, url };
+}
+
+async function saveFailedPageHtml(page, app, pageNumber, expectedCount, extractedCount, attempts, lastError) {
+  const timestamp = new Date().toISOString().replaceAll(':', '-').replaceAll('.', '-');
+  const filename = `${app.id}-page-${pageNumber}-${timestamp}.html`;
+  const evidenceUrl = file(`artifacts/failed-pages/${filename}`);
+  const details = {
+    app: app.name,
+    app_id: app.id,
+    page: pageNumber,
+    expected_reviews: expectedCount,
+    extracted_reviews: extractedCount,
+    attempts,
+    captured_at: new Date().toISOString(),
+    error: lastError?.message ?? null
+  };
+  await mkdir(file('artifacts/failed-pages'), { recursive: true });
+  const html = await page.content();
+  await writeFile(evidenceUrl, `<!-- REVIEW_RADAR_FAILURE_EVIDENCE\n${JSON.stringify(details, null, 2)}\n-->\n${html}`, 'utf8');
+  return `artifacts/failed-pages/${filename}`;
+}
+
+async function getCompletePage(page, app, pageNumber, expectedCount, initialResult = null) {
+  const maxAttempts = 3;
+  let bestResult = initialResult;
+  let lastError = null;
+  let attempts = initialResult ? 1 : 0;
+
+  if (bestResult?.reviews.length >= expectedCount) return bestResult.reviews;
+
+  while (attempts < maxAttempts) {
+    attempts += 1;
+    try {
+      const result = await getReviews(page, app, pageNumber);
+      if (!bestResult || result.reviews.length > bestResult.reviews.length) bestResult = result;
+      if (result.reviews.length >= expectedCount) return result.reviews;
+    } catch (error) {
+      lastError = error;
+    }
+    if (attempts < maxAttempts) await page.waitForTimeout(2500 * attempts);
+  }
+
+  const extractedCount = bestResult?.reviews.length ?? 0;
+  let evidencePath = 'unavailable';
+  try {
+    evidencePath = await saveFailedPageHtml(page, app, pageNumber, expectedCount, extractedCount, attempts, lastError);
+  } catch (evidenceError) {
+    lastError ??= evidenceError;
+  }
+  throw new Error(`INCOMPLETE_PAGE_COLLECTION: ${app.name} page ${pageNumber} expected at least ${expectedCount} review cards, but extracted ${extractedCount} after ${attempts} attempts. Failure HTML: ${evidencePath}`);
 }
 
 async function getTotalReviewCount(page) {
@@ -75,7 +125,7 @@ const scanApps = [];
 try {
   for (const app of apps) {
     const page = await browser.newPage({ userAgent: 'Mozilla/5.0 (compatible; GoKwik-Assignment-Review-Radar/1.0; +https://github.com)' });
-    const firstPage = await getReviews(page, app, 1);
+    const firstResult = await getReviews(page, app, 1);
     const reportedCount = await getTotalReviewCount(page);
     const previousCount = historicCount(app.id);
     if (reportedCount === 0 && previousCount > 0) {
@@ -85,9 +135,11 @@ try {
     // the complete public history, not an arbitrary sample. The cap prevents a malformed page
     // from creating an unbounded job.
     const pagesToVisit = Math.min(100, Math.max(1, Math.ceil(reportedCount / 10)));
+    const expectedOnPage = (pageNumber) => Math.min(10, Math.max(1, reportedCount - ((pageNumber - 1) * 10)));
+    const firstPage = await getCompletePage(page, app, 1, expectedOnPage(1), firstResult);
     const reviews = [...firstPage];
     for (let pageNumber = 2; pageNumber <= pagesToVisit; pageNumber++) {
-      const batch = await getReviews(page, app, pageNumber);
+      const batch = await getCompletePage(page, app, pageNumber, expectedOnPage(pageNumber));
       reviews.push(...batch);
     }
     await page.close();
