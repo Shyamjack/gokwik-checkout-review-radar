@@ -68,6 +68,7 @@ async function getTotalReviewCount(page) {
 const { data: existing, error: existingError } = await db.from('tracker_reviews').select('*');
 if (existingError) throw existingError;
 const seen = new Map(existing.map(r => [r.id, r]));
+const historicCount = (appId) => existing.filter((review) => review.app_id === appId).length;
 const browser = await chromium.launch({ headless: true });
 let collected = 0;
 const scanApps = [];
@@ -76,6 +77,10 @@ try {
     const page = await browser.newPage({ userAgent: 'Mozilla/5.0 (compatible; GoKwik-Assignment-Review-Radar/1.0; +https://github.com)' });
     const firstPage = await getReviews(page, app, 1);
     const reportedCount = await getTotalReviewCount(page);
+    const previousCount = historicCount(app.id);
+    if (reportedCount === 0 && previousCount > 0) {
+      throw new Error(`UNREADABLE_REVIEW_TOTAL: ${app.name} previously had ${previousCount} reviews, but Shopify's visible review total could not be read.`);
+    }
     // Shopify currently exposes ten reviews per page. Use the displayed total so we collect
     // the complete public history, not an arbitrary sample. The cap prevents a malformed page
     // from creating an unbounded job.
@@ -86,6 +91,9 @@ try {
       reviews.push(...batch);
     }
     await page.close();
+    if (reportedCount > 0 && reviews.length < reportedCount) {
+      throw new Error(`INCOMPLETE_APP_COLLECTION: ${app.name} shows ${reportedCount} public reviews, but the scraper extracted ${reviews.length}.`);
+    }
     collected += reviews.length;
     const newReviews = reviews.filter((review) => !seen.has(review.id)).length;
     for (const review of reviews) {

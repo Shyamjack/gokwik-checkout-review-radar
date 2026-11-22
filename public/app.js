@@ -1,5 +1,5 @@
 (() => {
-  const DATA = window.TRACKER_DATA || { reviews: [], validation: [], apps: [] };
+  const DATA = window.TRACKER_DATA || { reviews: [], apps: [], audit: null };
   DATA.reviews = Array.from(new Map(DATA.reviews.map((r) => [`${r.appId}|${r.merchant}|${String(r.text).slice(0, 160)}`, r])).values());
   const $ = (s) => document.querySelector(s);
   const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -10,6 +10,7 @@
   const top = (input) => (Array.isArray(input) ? input : Object.entries(input)).sort((a, b) => b[1] - a[1])[0] || ['No signal yet', 0];
   const latest = (rows) => rows.slice().sort((a, b) => d(b.date) - d(a.date));
   const byApp = (id) => DATA.reviews.filter((r) => r.appId === id);
+  const reviewById = new Map(DATA.reviews.map((review) => [review.id, review]));
   const negativeThemes = (rows) => Object.entries(count(rows.filter((r) => r.sentiment === 'negative'), 'theme')).sort((a, b) => b[1] - a[1]);
   const action = { support: 'Test proof points around responsive support, implementation help, or named ownership.', setup: 'Test an onboarding-led story: guided migration, integration clarity, and fast time to value.', conversion: 'Investigate checkout friction, then test a message around a more confident purchase journey.', pricing: 'Test transparent value education. Do not make price comparisons without current evidence.', 'COD / RTO': 'Test practical education around order-quality, fraud prevention, and RTO workflows.', 'product / other': 'Investigate the exact product issue before turning it into a campaign message.' };
 
@@ -72,6 +73,19 @@
     const themes = [...new Set(DATA.reviews.map((r) => r.theme))].sort();
     return `<section class="comparison"><div class="page-heading"><p class="kicker">COMPANY COMPARE</p><h1>Compare the<br>companies.</h1><p>Side-by-side review signals using the same sentiment and theme taxonomy for every brand.</p></div><div class="compare-grid">${cards}</div><section class="panel comparison-table"><p class="kicker">THEME COMPARISON</p><h2>Where negative signals cluster</h2><div class="theme-matrix"><div class="matrix-label">Theme</div>${DATA.apps.map((a) => `<div class="matrix-head">${esc(a.name)}</div>`).join('')}${themes.map((theme) => `<div class="matrix-label">${esc(theme)}</div>${DATA.apps.map((a) => `<div class="matrix-cell">${byApp(a.id).filter((r) => r.sentiment === 'negative' && r.theme === theme).length || '—'}</div>`).join('')}`).join('')}</div></section></section>`;
   }
+  function auditSummary() {
+    const audit = DATA.audit;
+    if (!audit?.total) return '';
+    const mistakes = audit.examples || [];
+    const cases = mistakes.map((row) => {
+      const review = reviewById.get(row.reviewId);
+      if (!review) return '';
+      const sentimentChanged = row.manualSentiment !== row.sentiment;
+      const label = sentimentChanged ? `Manual: ${row.manualSentiment} · tracker: ${row.sentiment}` : `Manual theme: ${row.manualTheme} · tracker theme: ${row.theme}`;
+      return `<a class="audit-case" href="${esc(review.sourceUrl)}" target="_blank" rel="noreferrer"><span>${esc(label)}</span><b>“${esc(review.text)}”</b></a>`;
+    }).join('');
+    return `<section class="audit-summary panel"><div><p class="kicker">TAGGING QUALITY CHECK</p><h2>Human audit of ${audit.total} reviews</h2><p>These are independent human labels compared with the rule-based tracker. The audit shows where the rules need improvement, not a claim of perfect AI accuracy.</p></div><div class="audit-score"><article><span>SENTIMENT MATCH</span><strong>${pct(audit.sentimentMatches, audit.total)}%</strong><small>${audit.sentimentMatches} of ${audit.total} reviews</small></article><article><span>THEME MATCH</span><strong>${pct(audit.themeMatches, audit.total)}%</strong><small>${audit.themeMatches} of ${audit.total} reviews</small></article></div><div class="audit-cases"><p class="kicker">TWO EXAMPLES THE TRACKER MISSED</p>${cases}</div></section>`;
+  }
   function selectCompany(id) {
     const company = DATA.apps.find((a) => a.id === id) || DATA.apps[0];
     $('#company-panel').innerHTML = companyProfile(company);
@@ -100,7 +114,7 @@
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
   function layout() {
-    document.body.innerHTML = `<main class="shell"><nav class="nav"><a class="brand" href="#top">REVIEW<br>RADAR</a><div class="nav-actions"><div class="company-menu-wrap"><button id="company-menu" class="nav-action active" aria-expanded="false"><span id="company-label">Companies</span><b>⌄</b></button><div id="company-list" class="company-list" hidden>${DATA.apps.map((a) => `<button data-company="${a.id}"><i style="background:${a.accent}"></i>${esc(a.name)}</button>`).join('')}</div></div><button id="compare-button" class="nav-action">Company Compare</button></div></nav><div id="top"></div><div id="company-panel" class="tab-panel active"></div><div id="compare-panel" class="tab-panel">${comparison()}</div><footer>REVIEW RADAR · PUBLIC SHOPIFY APP STORE SOURCES</footer></main>`;
+    document.body.innerHTML = `<main class="shell"><nav class="nav"><a class="brand" href="#top">REVIEW<br>RADAR</a><div class="nav-actions"><div class="company-menu-wrap"><button id="company-menu" class="nav-action active" aria-expanded="false"><span id="company-label">Companies</span><b>⌄</b></button><div id="company-list" class="company-list" hidden>${DATA.apps.map((a) => `<button data-company="${a.id}"><i style="background:${a.accent}"></i>${esc(a.name)}</button>`).join('')}</div></div><button id="compare-button" class="nav-action">Company Compare</button></div></nav><div id="top"></div><div id="company-panel" class="tab-panel active"></div><div id="compare-panel" class="tab-panel">${comparison()}</div>${auditSummary()}<footer class="site-footer"><span>REVIEW RADAR · PUBLIC SHOPIFY APP STORE SOURCES</span><span>Published review data is public; the Supabase database and service key are not.</span><a href="https://github.com/Shyamjack/gokwik-checkout-review-radar/issues/1" target="_blank" rel="noreferrer">Alert proof: simulated empty collection ↗</a></footer></main>`;
     $('#company-menu').addEventListener('click', () => { const open = $('#company-list').hidden; $('#company-list').hidden = !open; $('#company-menu').setAttribute('aria-expanded', String(open)); });
     document.querySelectorAll('[data-company]').forEach((button) => button.addEventListener('click', () => selectCompany(button.dataset.company)));
     $('#compare-button').addEventListener('click', showCompare);
