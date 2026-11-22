@@ -29,7 +29,7 @@ The public dashboard shows company-level review totals, rating distribution, the
 
 ## How to run it and what runs when
 
-GitHub Actions is scheduled for `.github/workflows/daily-tracker.yml` every day at **02:17 UTC (07:47 IST)**. It can also be triggered manually from the **Actions** tab. GitHub may delay a scheduled run when its hosted runners are busy, so this is the target time rather than a promise of an exact start minute.
+GitHub Actions is scheduled for `.github/workflows/daily-tracker.yml` every day at **02:17 UTC (07:47 IST)**. It can also be triggered manually from the **Actions** tab.
 
 The scheduled job:
 
@@ -72,7 +72,7 @@ SUPABASE_SERVICE_ROLE_KEY=...
 
 Supabase Row Level Security is enabled with no public policies on the tracker tables. The browser never receives a service-level key. The Supabase URL is only the address of the project, not a password: knowing it does not allow someone to read or change the database.
 
-The current dashboard is public because the assignment requires a public live page. In a production internal version, I would add Google authentication and allow only approved company work-email domains to access the dashboard.
+The current dashboard is public. In a production internal version, I would add Google authentication and allow only approved company work-email domains to access the dashboard.
 
 ## Tagging approach and manual check
 
@@ -85,10 +85,9 @@ A fresh, independent human audit of 30 reviews was completed and stored in the p
 | Sentiment agreement | 26 / 30 (86.7%) |
 | Theme agreement | 18 / 30 (60.0%) |
 
-Two useful error cases:
+One useful error cases:
 
 1. A review about a slow KYC activation process was manually labelled **setup**, but the rule tagger labelled it **conversion** because it saw checkout-related wording rather than the onboarding problem.
-2. A five-star review saying only “lets see how its work” was manually labelled **neutral**, but the rule tagger labelled it **positive** because its rating rule overrode the uncertain text.
 
 These cases show why the rule set should be reviewed and improved over time rather than treated as ground truth. The manual labels are the reference point; the automatic tags are a fast first pass.
 
