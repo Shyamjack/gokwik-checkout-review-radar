@@ -135,8 +135,10 @@ try {
     // the complete public history, not an arbitrary sample. The cap prevents a malformed page
     // from creating an unbounded job.
     const pagesToVisit = Math.min(100, Math.max(1, Math.ceil(reportedCount / 10)));
-    const expectedOnPage = (pageNumber) => Math.min(10, Math.max(1, reportedCount - ((pageNumber - 1) * 10)));
-    const firstPage = await getCompletePage(page, app, 1, expectedOnPage(1), firstResult);
+    const expectedOnPage = (pageNumber) => Math.min(10, Math.max(0, reportedCount - ((pageNumber - 1) * 10)));
+    // Zero public reviews is a valid result for an app that has never had review cards.
+    // It is not the same as an unreadable zero total for an app with historic reviews.
+    const firstPage = reportedCount === 0 ? firstResult.reviews : await getCompletePage(page, app, 1, expectedOnPage(1), firstResult);
     const reviews = [...firstPage];
     for (let pageNumber = 2; pageNumber <= pagesToVisit; pageNumber++) {
       const batch = await getCompletePage(page, app, pageNumber, expectedOnPage(pageNumber));
