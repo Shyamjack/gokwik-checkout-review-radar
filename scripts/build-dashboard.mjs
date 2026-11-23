@@ -24,18 +24,23 @@ const validation = validationRows.map((r) => ({
 }));
 const runs = runRows.map((r) => ({ id: r.id, ranAt: r.ran_at, collected: r.collected, stored: r.stored, newReviews: r.new_reviews, durationMs: r.duration_ms, status: r.status, detail: r.detail }));
 const runApps = runAppRows.map((r) => ({ runId: r.run_id, appId: r.app_id, collected: r.collected, newReviews: r.new_reviews, totalReviews: r.total_reviews, status: r.status, detail: r.detail }));
-const mismatches = validation.filter((row) => row.manualSentiment !== row.sentiment || row.manualTheme !== row.theme);
 const exampleIds = ['4b5b4fa49f6e7a7d', 'c3d78018c9aae70b'];
-const examples = exampleIds.map((id) => mismatches.find((row) => row.reviewId === id)).filter(Boolean);
-const audit = validation.length ? {
-  total: validation.length,
-  sentimentMatches: validation.filter((row) => row.manualSentiment === row.sentiment).length,
-  themeMatches: validation.filter((row) => row.manualTheme === row.theme).length,
-  examples: examples.length ? examples : mismatches.slice(0, 2)
-} : null;
+const reviewById = new Map(reviews.map((review) => [review.id, review]));
+const auditByApp = Object.fromEntries(apps.map((app) => {
+  const appValidation = validation.filter((row) => reviewById.get(row.reviewId)?.appId === app.id);
+  if (!appValidation.length) return null;
+  const mismatches = appValidation.filter((row) => row.manualSentiment !== row.sentiment || row.manualTheme !== row.theme);
+  const selectedExamples = exampleIds.map((id) => mismatches.find((row) => row.reviewId === id)).filter(Boolean);
+  return [app.id, {
+    total: appValidation.length,
+    sentimentMatches: appValidation.filter((row) => row.manualSentiment === row.sentiment).length,
+    themeMatches: appValidation.filter((row) => row.manualTheme === row.theme).length,
+    examples: selectedExamples.length ? selectedExamples : mismatches.slice(0, 2)
+  }];
+}).filter(Boolean));
 // The detailed human labels remain in private Supabase. The public dashboard
-// receives only audit totals and two selected error examples.
-const payload = JSON.stringify({ reviews, runs, runApps, apps, audit }).replaceAll('</', '<\\/');
+// receives only company-level audit totals and two selected error examples.
+const payload = JSON.stringify({ reviews, runs, runApps, apps, auditByApp }).replaceAll('</', '<\\/');
 const html = `<!doctype html>
 <html lang="en">
 <head>
